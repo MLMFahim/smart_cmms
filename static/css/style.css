@@ -1,0 +1,55 @@
+:root {
+    --primary-dark: #1e293b;
+}
+
+body {
+    background-color: #f8fafc;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Responsive 3-Column Grid System */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    padding: 0 1rem;
+}
+
+/* Mobile & Tablet Compatibility */
+@media (max-width: 991.98px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.card-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.custom-card {
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background: #ffffff;
+}
+
+.custom-card-header {
+    background-color: var(--primary-dark);
+    color: #ffffff;
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    border-top-left-radius: 8px !important;
+    border-top-right-radius: 8px !important;
+}
+
+.scrollable-panel {
+    max-height: 520px;
+    overflow-y: auto;
+}
+
+.badge-low-stock {
+    background-color: #dc3545;
+    color: white;
+}

@@ -1,10 +1,11 @@
 import os
 from flask import Flask, jsonify, request, render_template
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import SQLAlchemyError
 
 app = Flask(__name__)
 
-# Local SQLite configuration
+# Database Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smart_cmms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -15,209 +16,189 @@ db = SQLAlchemy(app)
 # ----------------------------------------------------
 
 class Asset(db.Model):
+    __tablename__ = 'assets'
     id = db.Column(db.Integer, primary_key=True)
+    asset_code = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    location = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(50), default="Operational")
+    category = db.Column(db.String(50), nullable=False)
+    manufacturer = db.Column(db.String(100), default="N/A")
+    model_number = db.Column(db.String(100), default="N/A")
+    serial_number = db.Column(db.String(100), default="N/A")
+    location_facility = db.Column(db.String(100), nullable=False)
+    department = db.Column(db.String(100), default="General")
+    installation_date = db.Column(db.String(20), default="N/A")
+    purchase_cost = db.Column(db.Float, default=0.0)
+    warranty_expiration = db.Column(db.String(20), default="N/A")
+    operational_status = db.Column(db.String(50), default="Operational")
+    criticality = db.Column(db.String(20), default="Medium")
+    power_rating = db.Column(db.String(50), default="N/A")
+    operating_voltage = db.Column(db.String(50), default="N/A")
+    maintenance_interval_days = db.Column(db.Integer, default=30)
+    last_maintenance_date = db.Column(db.String(20), default="N/A")
+    supplier_contact = db.Column(db.String(100), default="N/A")
 
     def to_dict(self):
-        return {"id": self.id, "name": self.name, "location": self.location, "status": self.status}
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class SparePart(db.Model):
+    __tablename__ = 'spare_parts'
     id = db.Column(db.Integer, primary_key=True)
+    part_number = db.Column(db.String(50), unique=True, nullable=False)
     part_name = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(50), default="General")
+    manufacturer = db.Column(db.String(100), default="N/A")
+    model_compatibility = db.Column(db.String(100), default="Universal")
     quantity = db.Column(db.Integer, default=0)
     reorder_threshold = db.Column(db.Integer, default=5)
+    reorder_quantity = db.Column(db.Integer, default=10)
+    unit_cost = db.Column(db.Float, default=0.0)
+    storage_bin_location = db.Column(db.String(50), default="A-01")
+    unit_of_measure = db.Column(db.String(20), default="PCS")
+    supplier_name = db.Column(db.String(100), default="N/A")
+    supplier_part_no = db.Column(db.String(50), default="N/A")
+    lead_time_days = db.Column(db.Integer, default=7)
+    criticality_rating = db.Column(db.String(20), default="Medium")
+    last_restock_date = db.Column(db.String(20), default="N/A")
 
     def to_dict(self):
-        return {
-            "id": self.id, 
-            "part_name": self.part_name, 
-            "quantity": self.quantity, 
-            "reorder_threshold": self.reorder_threshold
-        }
+        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        res["low_stock"] = (self.quantity or 0) <= (self.reorder_threshold or 0)
+        return res
+
 
 class WorkOrder(db.Model):
+    __tablename__ = 'work_orders'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
-    asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
     technician = db.Column(db.String(100), default="Unassigned")
     status = db.Column(db.String(50), default="Pending")
 
+    asset = db.relationship('Asset', backref='work_orders')
+    parts_used = db.relationship('WorkOrderPart', backref='work_order', cascade="all, delete-orphan")
+
     def to_dict(self):
-        asset = db.session.get(Asset, self.asset_id)
-        asset_name = asset.name if asset else "Unknown Asset"
         return {
-            "id": self.id, 
-            "title": self.title, 
+            "id": self.id,
+            "title": self.title,
             "asset_id": self.asset_id,
-            "asset_name": asset_name,
+            "asset_name": self.asset.name if self.asset else "Unknown",
             "technician": self.technician,
-            "status": self.status
+            "status": self.status,
+            "parts_used": [
+                {"part_id": p.part_id, "part_name": p.part.part_name if p.part else "Unknown", "quantity_used": p.quantity_used}
+                for p in self.parts_used
+            ]
         }
 
+
+class WorkOrderPart(db.Model):
+    __tablename__ = 'work_order_parts'
+    id = db.Column(db.Integer, primary_key=True)
+    work_order_id = db.Column(db.Integer, db.ForeignKey('work_orders.id'), nullable=False)
+    part_id = db.Column(db.Integer, db.ForeignKey('spare_parts.id'), nullable=False)
+    quantity_used = db.Column(db.Integer, default=1)
+
+    part = db.relationship('SparePart')
+
 # ----------------------------------------------------
-# FRONTEND ROUTE
+# ROUTES & REST API ENDPOINTS
 # ----------------------------------------------------
 
 @app.route('/')
 def dashboard():
     return render_template('index.html')
 
-# ----------------------------------------------------
-# ASSETS API (FULL CRUD)
-# ----------------------------------------------------
+@app.route('/api/assets', methods=['GET', 'POST'])
+def handle_assets():
+    if request.method == 'POST':
+        try:
+            data = request.json or {}
+            # Clean numeric and integer fields to prevent string/type casting errors
+            if 'purchase_cost' in data and data['purchase_cost']:
+                data['purchase_cost'] = float(data['purchase_cost'])
+            if 'maintenance_interval_days' in data and data['maintenance_interval_days']:
+                data['maintenance_interval_days'] = int(data['maintenance_interval_days'])
 
-@app.route('/api/assets', methods=['GET'])
-def get_assets():
+            asset = Asset(**data)
+            db.session.add(asset)
+            db.session.commit()
+            return jsonify(asset.to_dict()), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
     assets = db.session.scalars(db.select(Asset)).all()
-    return jsonify([asset.to_dict() for asset in assets])
+    return jsonify([a.to_dict() for a in assets])
 
-@app.route('/api/assets', methods=['POST'])
-def create_asset():
-    data = request.json
-    new_asset = Asset(
-        name=data['name'], 
-        location=data['location'], 
-        status=data.get('status', 'Operational')
-    )
-    db.session.add(new_asset)
-    db.session.commit()
-    return jsonify({"message": "Asset added", "asset": new_asset.to_dict()}), 201
+@app.route('/api/parts', methods=['GET', 'POST'])
+def handle_parts():
+    if request.method == 'POST':
+        try:
+            data = request.json or {}
+            # Cast numeric types safely
+            for field in ['quantity', 'reorder_threshold', 'reorder_quantity', 'lead_time_days']:
+                if field in data and data[field] != '':
+                    data[field] = int(data[field])
+            if 'unit_cost' in data and data['unit_cost'] != '':
+                data['unit_cost'] = float(data['unit_cost'])
 
-@app.route('/api/assets/<int:asset_id>', methods=['PUT'])
-def update_asset(asset_id):
-    asset = db.session.get(Asset, asset_id)
-    if not asset:
-        return jsonify({"error": "Asset not found"}), 404
-    
-    data = request.json
-    asset.name = data.get('name', asset.name)
-    asset.location = data.get('location', asset.location)
-    asset.status = data.get('status', asset.status)
-    db.session.commit()
-    return jsonify({"message": "Asset updated", "asset": asset.to_dict()})
+            part = SparePart(**data)
+            db.session.add(part)
+            db.session.commit()
+            return jsonify(part.to_dict()), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
 
-@app.route('/api/assets/<int:asset_id>', methods=['DELETE'])
-def delete_asset(asset_id):
-    asset = db.session.get(Asset, asset_id)
-    if not asset:
-        return jsonify({"error": "Asset not found"}), 404
-    db.session.delete(asset)
-    db.session.commit()
-    return jsonify({"message": "Asset deleted successfully"})
-
-# ----------------------------------------------------
-# SPARE PARTS API (FULL CRUD)
-# ----------------------------------------------------
-
-@app.route('/api/parts', methods=['GET'])
-def get_parts():
     parts = db.session.scalars(db.select(SparePart)).all()
-    return jsonify([part.to_dict() for part in parts])
+    return jsonify([p.to_dict() for p in parts])
 
-@app.route('/api/parts', methods=['POST'])
-def create_part():
-    data = request.json
-    new_part = SparePart(
-        part_name=data['part_name'],
-        quantity=data.get('quantity', 0),
-        reorder_threshold=data.get('reorder_threshold', 5)
-    )
-    db.session.add(new_part)
-    db.session.commit()
-    return jsonify({"message": "Part added", "part": new_part.to_dict()}), 201
+@app.route('/api/work_orders', methods=['GET', 'POST'])
+def handle_work_orders():
+    if request.method == 'POST':
+        try:
+            data = request.json or {}
+            order = WorkOrder(
+                title=data['title'], 
+                asset_id=int(data['asset_id']), 
+                technician=data.get('technician', 'Unassigned'), 
+                status="In Progress"
+            )
+            db.session.add(order)
+            db.session.commit()
+            return jsonify(order.to_dict()), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
 
-@app.route('/api/parts/<int:part_id>', methods=['PUT'])
-def update_part(part_id):
-    part = db.session.get(SparePart, part_id)
-    if not part:
-        return jsonify({"error": "Part not found"}), 404
-    
-    data = request.json
-    part.part_name = data.get('part_name', part.part_name)
-    part.quantity = data.get('quantity', part.quantity)
-    part.reorder_threshold = data.get('reorder_threshold', part.reorder_threshold)
-    db.session.commit()
-    return jsonify({"message": "Stock updated", "part": part.to_dict()})
-
-@app.route('/api/parts/<int:part_id>', methods=['DELETE'])
-def delete_part(part_id):
-    part = db.session.get(SparePart, part_id)
-    if not part:
-        return jsonify({"error": "Part not found"}), 404
-    db.session.delete(part)
-    db.session.commit()
-    return jsonify({"message": "Part deleted successfully"})
-
-# ----------------------------------------------------
-# WORK ORDERS API (FULL CRUD)
-# ----------------------------------------------------
-
-@app.route('/api/work_orders', methods=['GET'])
-def get_work_orders():
     orders = db.session.scalars(db.select(WorkOrder)).all()
-    return jsonify([order.to_dict() for order in orders])
+    return jsonify([o.to_dict() for o in orders])
 
-@app.route('/api/work_orders', methods=['POST'])
-def create_work_order():
-    data = request.json
-    new_order = WorkOrder(
-        title=data['title'],
-        asset_id=data['asset_id'],
-        technician=data.get('technician', 'Unassigned')
-    )
-    db.session.add(new_order)
-    db.session.commit()
-    return jsonify({"message": "Work order created", "work_order": new_order.to_dict()}), 201
-
-@app.route('/api/work_orders/<int:order_id>', methods=['PATCH'])
-def update_work_order_status(order_id):
+@app.route('/api/work_orders/<int:order_id>/complete', methods=['POST'])
+def complete_work_order(order_id):
     order = db.session.get(WorkOrder, order_id)
-    if not order:
-        return jsonify({"error": "Work Order not found"}), 404
-    
-    data = request.json
-    if 'status' in data:
-        order.status = data['status']
-    if 'technician' in data:
-        order.technician = data['technician']
-    
-    db.session.commit()
-    return jsonify({"message": "Work Order updated", "work_order": order.to_dict()})
+    if not order or order.status == 'Completed':
+        return jsonify({"error": "Invalid order status"}), 400
 
-@app.route('/api/work_orders/<int:order_id>', methods=['DELETE'])
-def delete_work_order(order_id):
-    order = db.session.get(WorkOrder, order_id)
-    if not order:
-        return jsonify({"error": "Work Order not found"}), 404
-    db.session.delete(order)
-    db.session.commit()
-    return jsonify({"message": "Work Order deleted successfully"})
+    try:
+        for item in order.parts_used:
+            if item.part and item.part.quantity < item.quantity_used:
+                return jsonify({"error": f"Insufficient stock for '{item.part.part_name}'"}), 400
 
-# ----------------------------------------------------
-# APPLICATION LAUNCH & SEEDING
-# ----------------------------------------------------
+        for item in order.parts_used:
+            if item.part:
+                item.part.quantity -= item.quantity_used
+
+        order.status = 'Completed'
+        db.session.commit()
+        return jsonify(order.to_dict())
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": "Database Error", "details": str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        
-        if not db.session.scalars(db.select(Asset)).first():
-            a1 = Asset(name="Conveyor Motor A1", location="Building B - Line 1")
-            a2 = Asset(name="Hydraulic Press H2", location="Building A - Main Floor")
-            db.session.add_all([a1, a2])
-            db.session.commit()
-
-        if not db.session.scalars(db.select(SparePart)).first():
-            p1 = SparePart(part_name="6205 Bearing", quantity=12, reorder_threshold=5)
-            p2 = SparePart(part_name="Hydraulic Seal Kit", quantity=2, reorder_threshold=4)
-            db.session.add_all([p1, p2])
-            db.session.commit()
-
-        if not db.session.scalars(db.select(WorkOrder)).first():
-            w1 = WorkOrder(title="Inspect Motor Vibration", asset_id=1, technician="M.L.M. Fahim", status="In Progress")
-            db.session.add(w1)
-            db.session.commit()
-
     app.run(debug=True)

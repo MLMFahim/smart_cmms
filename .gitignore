@@ -1,0 +1,11 @@
+# Python environment & cache
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# SQLite Database
+*.db
+smart_cmms.db
+instance/
