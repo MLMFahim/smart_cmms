@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart CMMS Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="#">Smart Inventory & Maintenance Planner</a>
+    </div>
+</nav>
+
+<div class="container">
+    
+    <!-- Top Row: Assets & Spare Parts Overview -->
+    <div class="row mb-4">
+        <div class="col-md-6 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white font-weight-bold">Registered Assets</div>
+                <div class="card-body">
+                    <ul id="assets-list" class="list-group list-group-flush"></ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white font-weight-bold">Inventory & Spare Parts</div>
+                <div class="card-body">
+                    <ul id="parts-list" class="list-group list-group-flush"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Work Order Management Section -->
+    <div class="row">
+        <div class="col-md-8 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white font-weight-bold">Work Orders</div>
+                <div class="card-body">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Title</th>
+                                <th>Asset</th>
+                                <th>Technician</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="work-orders-table"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create New Work Order Form -->
+        <div class="col-md-4 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white font-weight-bold">Create Work Order</div>
+                <div class="card-body">
+                    <form id="create-order-form">
+                        <div class="mb-3">
+                            <label class="form-label">Task Title</label>
+                            <input type="text" id="order-title" class="form-control" placeholder="e.g., Replace Seal" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Select Asset</label>
+                            <select id="order-asset" class="form-select" required></select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Technician</label>
+                            <input type="text" id="order-tech" class="form-control" placeholder="Technician Name">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Submit Work Order</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    async function loadDashboardData() {
+        // Fetch Assets
+        const assetsRes = await fetch('/api/assets');
+        const assets = await assetsRes.json();
+        
+        const assetsList = document.getElementById('assets-list');
+        const assetSelect = document.getElementById('order-asset');
+        assetsList.innerHTML = '';
+        assetSelect.innerHTML = '';
+
+        assets.forEach(a => {
+            assetsList.innerHTML += `<li class="list-group-item d-flex justify-content-between">
+                <span><strong>${a.name}</strong> (${a.location})</span>
+                <span class="badge bg-info text-dark">${a.status}</span>
+            </li>`;
+            
+            assetSelect.innerHTML += `<option value="${a.id}">${a.name}</option>`;
+        });
+
+        // Fetch Parts
+        const partsRes = await fetch('/api/parts');
+        const parts = await partsRes.json();
+        const partsList = document.getElementById('parts-list');
+        partsList.innerHTML = '';
+
+        parts.forEach(p => {
+            const lowStock = p.quantity <= p.reorder_threshold;
+            partsList.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>${p.part_name}</span>
+                <span class="badge ${lowStock ? 'bg-danger' : 'bg-success'}">
+                    Qty: ${p.quantity} (Min: ${p.reorder_threshold})
+                </span>
+            </li>`;
+        });
+
+        // Fetch Work Orders
+        const woRes = await fetch('/api/work_orders');
+        const orders = await woRes.json();
+        const woTable = document.getElementById('work-orders-table');
+        woTable.innerHTML = '';
+
+        orders.forEach(o => {
+            let statusBadge = o.status === 'Completed' ? 'bg-success' : (o.status === 'In Progress' ? 'bg-warning text-dark' : 'bg-secondary');
+            
+            woTable.innerHTML += `<tr>
+                <td>#${o.id}</td>
+                <td>${o.title}</td>
+                <td>${o.asset_name}</td>
+                <td>${o.technician}</td>
+                <td><span class="badge ${statusBadge}">${o.status}</span></td>
+                <td>
+                    ${o.status !== 'Completed' ? `<button class="btn btn-sm btn-outline-success" onclick="completeOrder(${o.id})">Complete</button>` : '—'}
+                </td>
+            </tr>`;
+        });
+    }
+
+    // Submit Work Order Form
+    document.getElementById('create-order-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('order-title').value;
+        const asset_id = document.getElementById('order-asset').value;
+        const technician = document.getElementById('order-tech').value;
+
+        await fetch('/api/work_orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, asset_id, technician })
+        });
+
+        document.getElementById('order-title').value = '';
+        document.getElementById('order-tech').value = '';
+        loadDashboardData();
+    });
+
+    // Mark Work Order as Completed
+    async function completeOrder(orderId) {
+        await fetch(`/api/work_orders/${orderId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Completed' })
+        });
+        loadDashboardData();
+    }
+
+    // Initialize Dashboard
+    loadDashboardData();
+</script>
+
+</body>
+</html>
