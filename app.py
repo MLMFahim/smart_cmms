@@ -43,23 +43,28 @@ class Asset(db.Model):
 
 class SparePart(db.Model):
     __tablename__ = 'spare_parts'
-    id = db.Column(db.Integer, primary_key=True)
-    part_number = db.Column(db.String(50), unique=True, nullable=False)
-    part_name = db.Column(db.String(100), nullable=False)
-    category = db.Column(db.String(50), default="General")
-    manufacturer = db.Column(db.String(100), default="N/A")
-    model_compatibility = db.Column(db.String(100), default="Universal")
-    quantity = db.Column(db.Integer, default=0)
-    reorder_threshold = db.Column(db.Integer, default=5)
-    reorder_quantity = db.Column(db.Integer, default=10)
-    unit_cost = db.Column(db.Float, default=0.0)
-    storage_bin_location = db.Column(db.String(50), default="A-01")
-    unit_of_measure = db.Column(db.String(20), default="PCS")
-    supplier_name = db.Column(db.String(100), default="N/A")
-    supplier_part_no = db.Column(db.String(50), default="N/A")
-    lead_time_days = db.Column(db.Integer, default=7)
-    criticality_rating = db.Column(db.String(20), default="Medium")
-    last_restock_date = db.Column(db.String(20), default="N/A")
+    
+    # 20 Inventory Fields
+    id = db.Column(db.Integer, primary_key=True)                           # 1
+    part_number = db.Column(db.String(50), unique=True, nullable=False)   # 2
+    part_name = db.Column(db.String(100), nullable=False)                 # 3
+    category = db.Column(db.String(50), default="General")                # 4
+    manufacturer = db.Column(db.String(100), default="N/A")               # 5
+    model_compatibility = db.Column(db.String(100), default="Universal") # 6
+    quantity = db.Column(db.Integer, default=0)                           # 7
+    reorder_threshold = db.Column(db.Integer, default=5)                  # 8
+    reorder_quantity = db.Column(db.Integer, default=10)                 # 9
+    maximum_stock_level = db.Column(db.Integer, default=100)             # 10
+    unit_of_measure = db.Column(db.String(20), default="PCS")             # 11
+    unit_cost = db.Column(db.Float, default=0.0)                          # 12
+    storage_bin_location = db.Column(db.String(50), default="A-01")       # 13
+    warehouse_zone = db.Column(db.String(50), default="Zone A")           # 14
+    shelf_number = db.Column(db.String(50), default="Shelf 1")            # 15
+    supplier_name = db.Column(db.String(100), default="N/A")              # 16
+    supplier_part_no = db.Column(db.String(50), default="N/A")           # 17
+    lead_time_days = db.Column(db.Integer, default=7)                     # 18
+    criticality_rating = db.Column(db.String(20), default="Medium")        # 19
+    last_restock_date = db.Column(db.String(20), default="N/A")           # 20
 
     def to_dict(self):
         res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -110,12 +115,15 @@ class WorkOrderPart(db.Model):
 def dashboard():
     return render_template('index.html')
 
+@app.route('/inventory')
+def inventory_page():
+    return render_template('inventory.html')
+
 @app.route('/api/assets', methods=['GET', 'POST'])
 def handle_assets():
     if request.method == 'POST':
         try:
             data = request.json or {}
-            # Clean numeric and integer fields to prevent string/type casting errors
             if 'purchase_cost' in data and data['purchase_cost']:
                 data['purchase_cost'] = float(data['purchase_cost'])
             if 'maintenance_interval_days' in data and data['maintenance_interval_days']:
@@ -137,8 +145,7 @@ def handle_parts():
     if request.method == 'POST':
         try:
             data = request.json or {}
-            # Cast numeric types safely
-            for field in ['quantity', 'reorder_threshold', 'reorder_quantity', 'lead_time_days']:
+            for field in ['quantity', 'reorder_threshold', 'reorder_quantity', 'maximum_stock_level', 'lead_time_days']:
                 if field in data and data[field] != '':
                     data[field] = int(data[field])
             if 'unit_cost' in data and data['unit_cost'] != '':
@@ -153,6 +160,13 @@ def handle_parts():
             return jsonify({"error": str(e)}), 400
 
     parts = db.session.scalars(db.select(SparePart)).all()
+    return jsonify([p.to_dict() for p in parts])
+
+@app.route('/api/parts/low_stock', methods=['GET'])
+def get_low_stock():
+    parts = db.session.scalars(
+        db.select(SparePart).where(SparePart.quantity <= SparePart.reorder_threshold)
+    ).all()
     return jsonify([p.to_dict() for p in parts])
 
 @app.route('/api/work_orders', methods=['GET', 'POST'])
@@ -176,16 +190,45 @@ def handle_work_orders():
     orders = db.session.scalars(db.select(WorkOrder)).all()
     return jsonify([o.to_dict() for o in orders])
 
+@app.route('/api/work_orders/<int:order_id>/add_part', methods=['POST'])
+def add_part_to_work_order(order_id):
+    order = db.session.get(WorkOrder, order_id)
+    if not order:
+        return jsonify({"error": "Work order not found"}), 404
+
+    data = request.json or {}
+    part_id = data.get('part_id')
+    quantity_used = int(data.get('quantity_used', 1))
+
+    part = db.session.get(SparePart, part_id)
+    if not part:
+        return jsonify({"error": "Spare part not found"}), 404
+
+    try:
+        wo_part = WorkOrderPart(
+            work_order_id=order.id,
+            part_id=part.id,
+            quantity_used=quantity_used
+        )
+        db.session.add(wo_part)
+        db.session.commit()
+        return jsonify(order.to_dict())
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/work_orders/<int:order_id>/complete', methods=['POST'])
 def complete_work_order(order_id):
     order = db.session.get(WorkOrder, order_id)
     if not order or order.status == 'Completed':
-        return jsonify({"error": "Invalid order status"}), 400
+        return jsonify({"error": "Invalid order status or already completed"}), 400
 
     try:
         for item in order.parts_used:
             if item.part and item.part.quantity < item.quantity_used:
-                return jsonify({"error": f"Insufficient stock for '{item.part.part_name}'"}), 400
+                return jsonify({
+                    "error": f"Insufficient stock for '{item.part.part_name}'. Available: {item.part.quantity}, Needed: {item.quantity_used}"
+                }), 400
 
         for item in order.parts_used:
             if item.part:
@@ -197,6 +240,24 @@ def complete_work_order(order_id):
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({"error": "Database Error", "details": str(e)}), 500
+
+@app.route('/api/analytics', methods=['GET'])
+def get_analytics():
+    total_assets = db.session.query(Asset).count()
+    total_orders = db.session.query(WorkOrder).count()
+    completed_orders = db.session.query(WorkOrder).filter(WorkOrder.status == 'Completed').count()
+    in_progress_orders = db.session.query(WorkOrder).filter(WorkOrder.status == 'In Progress').count()
+    
+    all_parts = db.session.scalars(db.select(SparePart)).all()
+    low_stock_count = sum(1 for p in all_parts if (p.quantity or 0) <= (p.reorder_threshold or 0))
+
+    return jsonify({
+        "total_assets": total_assets,
+        "total_work_orders": total_orders,
+        "completed_work_orders": completed_orders,
+        "in_progress_work_orders": in_progress_orders,
+        "low_stock_parts_count": low_stock_count
+    })
 
 if __name__ == '__main__':
     with app.app_context():

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart CMMS - Detailed Inventory</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="bg-light">
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="/">Smart CMMS</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">Dashboard</a>
+                <a class="nav-link active" href="/inventory">Inventory</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid my-4 px-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h2 class="fw-bold m-0">Spare Parts Inventory</h2>
+                <small class="text-muted">Comprehensive 20-Field Warehouse Tracking</small>
+            </div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPartModal">+ Add Spare Part</button>
+        </div>
+
+        <!-- Alert Banner -->
+        <div id="lowStockAlert" class="alert alert-warning d-none mb-4" role="alert">
+            <strong>Low Stock Warning!</strong> One or more inventory parts have reached critical stock levels.
+        </div>
+
+        <!-- Inventory Table -->
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="partsTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Part No</th>
+                                <th>Part Name</th>
+                                <th>Category</th>
+                                <th>Manufacturer</th>
+                                <th>Compatibility</th>
+                                <th>Qty</th>
+                                <th>Reorder Thresh.</th>
+                                <th>Max Stock</th>
+                                <th>UOM</th>
+                                <th>Unit Cost</th>
+                                <th>Bin Loc.</th>
+                                <th>Zone / Shelf</th>
+                                <th>Supplier</th>
+                                <th>Supp. Part #</th>
+                                <th>Lead Time</th>
+                                <th>Criticality</th>
+                                <th>Last Restock</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryBody">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for 20 Fields -->
+    <div class="modal fade" id="addPartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Add Spare Part (20 Field Entry)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addPartForm">
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <!-- 1-5 -->
+                            <div class="col-md-3">
+                                <label class="form-label">Part Number *</label>
+                                <input type="text" class="form-control" name="part_number" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Part Name *</label>
+                                <input type="text" class="form-control" name="part_name" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Category</label>
+                                <input type="text" class="form-control" name="category" placeholder="e.g. Electrical">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Manufacturer</label>
+                                <input type="text" class="form-control" name="manufacturer" placeholder="e.g. Siemens">
+                            </div>
+
+                            <!-- 6-10 -->
+                            <div class="col-md-3">
+                                <label class="form-label">Model Compatibility</label>
+                                <input type="text" class="form-control" name="model_compatibility" placeholder="Universal">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Quantity *</label>
+                                <input type="number" class="form-control" name="quantity" min="0" value="0" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Reorder Threshold *</label>
+                                <input type="number" class="form-control" name="reorder_threshold" min="0" value="5" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Reorder Quantity</label>
+                                <input type="number" class="form-control" name="reorder_quantity" min="1" value="10">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Maximum Stock Level</label>
+                                <input type="number" class="form-control" name="maximum_stock_level" min="1" value="100">
+                            </div>
+
+                            <!-- 11-15 -->
+                            <div class="col-md-2">
+                                <label class="form-label">Unit of Measure</label>
+                                <input type="text" class="form-control" name="unit_of_measure" value="PCS">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Unit Cost ($)</label>
+                                <input type="number" step="0.01" class="form-control" name="unit_cost" value="0.00">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Storage Bin Location</label>
+                                <input type="text" class="form-control" name="storage_bin_location" placeholder="A-01">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Warehouse Zone</label>
+                                <input type="text" class="form-control" name="warehouse_zone" placeholder="Zone A">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Shelf Number</label>
+                                <input type="text" class="form-control" name="shelf_number" placeholder="Shelf 1">
+                            </div>
+
+                            <!-- 16-20 -->
+                            <div class="col-md-3">
+                                <label class="form-label">Supplier Name</label>
+                                <input type="text" class="form-control" name="supplier_name" placeholder="Supplier Ltd">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Supplier Part No</label>
+                                <input type="text" class="form-control" name="supplier_part_no">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Lead Time (Days)</label>
+                                <input type="number" class="form-control" name="lead_time_days" value="7">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Criticality Rating</label>
+                                <select class="form-select" name="criticality_rating">
+                                    <option value="Low">Low</option>
+                                    <option value="Medium" selected>Medium</option>
+                                    <option value="High">High</option>
+                                    <option value="Critical">Critical</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Last Restock Date</label>
+                                <input type="date" class="form-control" name="last_restock_date">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-success">Save Spare Part</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadInventory() {
+            try {
+                const response = await fetch('/api/parts');
+                const parts = await response.json();
+                
+                const tbody = document.getElementById('inventoryBody');
+                tbody.innerHTML = '';
+
+                let hasLowStock = false;
+
+                parts.forEach(part => {
+                    if (part.low_stock) hasLowStock = true;
+
+                    const row = document.createElement('tr');
+                    if (part.low_stock) row.classList.add('table-warning');
+
+                    row.innerHTML = `
+                        <td><strong>${part.part_number}</strong></td>
+                        <td>${part.part_name}</td>
+                        <td>${part.category || 'N/A'}</td>
+                        <td>${part.manufacturer || 'N/A'}</td>
+                        <td>${part.model_compatibility || 'Universal'}</td>
+                        <td><strong>${part.quantity}</strong></td>
+                        <td>${part.reorder_threshold}</td>
+                        <td>${part.maximum_stock_level}</td>
+                        <td>${part.unit_of_measure}</td>
+                        <td>$${(part.unit_cost || 0).toFixed(2)}</td>
+                        <td>${part.storage_bin_location}</td>
+                        <td>${part.warehouse_zone} / ${part.shelf_number}</td>
+                        <td>${part.supplier_name}</td>
+                        <td>${part.supplier_part_no}</td>
+                        <td>${part.lead_time_days} days</td>
+                        <td><span class="badge bg-secondary">${part.criticality_rating}</span></td>
+                        <td>${part.last_restock_date || 'N/A'}</td>
+                        <td>
+                            ${part.low_stock 
+                                ? '<span class="badge bg-danger">Reorder Needed</span>' 
+                                : '<span class="badge bg-success">In Stock</span>'}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                document.getElementById('lowStockAlert').classList.toggle('d-none', !hasLowStock);
+            } catch (err) {
+                console.error('Error loading inventory:', err);
+            }
+        }
+
+        document.getElementById('addPartForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/api/parts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('addPartModal')).hide();
+                    e.target.reset();
+                    loadInventory();
+                } else {
+                    const err = await response.json();
+                    alert('Error: ' + err.error);
+                }
+            } catch (err) {
+                console.error('Error saving part:', err);
+            }
+        });
+
+        loadInventory();
+    </script>
+</body>
+</html>
