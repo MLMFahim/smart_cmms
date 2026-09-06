@@ -8,4 +8,4 @@ venv/
 # SQLite Database
 *.db
 smart_cmms.db
-instance/
+instance/'ninstance/'n*.db
