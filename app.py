@@ -1,6 +1,8 @@
 import os
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, render_template
 from flask_sqlalchemy import SQLAlchemy
+from flask_apscheduler import APScheduler
 from sqlalchemy.exc import SQLAlchemyError
 
 app = Flask(__name__)
@@ -9,7 +11,11 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smart_cmms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Scheduler Configuration
+app.config['SCHEDULER_API_ENABLED'] = True
+
 db = SQLAlchemy(app)
+scheduler = APScheduler()
 
 # ----------------------------------------------------
 # DATABASE MODELS
@@ -44,27 +50,26 @@ class Asset(db.Model):
 class SparePart(db.Model):
     __tablename__ = 'spare_parts'
     
-    # 20 Inventory Fields
-    id = db.Column(db.Integer, primary_key=True)                           # 1
-    part_number = db.Column(db.String(50), unique=True, nullable=False)   # 2
-    part_name = db.Column(db.String(100), nullable=False)                 # 3
-    category = db.Column(db.String(50), default="General")                # 4
-    manufacturer = db.Column(db.String(100), default="N/A")               # 5
-    model_compatibility = db.Column(db.String(100), default="Universal") # 6
-    quantity = db.Column(db.Integer, default=0)                           # 7
-    reorder_threshold = db.Column(db.Integer, default=5)                  # 8
-    reorder_quantity = db.Column(db.Integer, default=10)                 # 9
-    maximum_stock_level = db.Column(db.Integer, default=100)             # 10
-    unit_of_measure = db.Column(db.String(20), default="PCS")             # 11
-    unit_cost = db.Column(db.Float, default=0.0)                          # 12
-    storage_bin_location = db.Column(db.String(50), default="A-01")       # 13
-    warehouse_zone = db.Column(db.String(50), default="Zone A")           # 14
-    shelf_number = db.Column(db.String(50), default="Shelf 1")            # 15
-    supplier_name = db.Column(db.String(100), default="N/A")              # 16
-    supplier_part_no = db.Column(db.String(50), default="N/A")           # 17
-    lead_time_days = db.Column(db.Integer, default=7)                     # 18
-    criticality_rating = db.Column(db.String(20), default="Medium")        # 19
-    last_restock_date = db.Column(db.String(20), default="N/A")           # 20
+    id = db.Column(db.Integer, primary_key=True)
+    part_number = db.Column(db.String(50), unique=True, nullable=False)
+    part_name = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(50), default="General")
+    manufacturer = db.Column(db.String(100), default="N/A")
+    model_compatibility = db.Column(db.String(100), default="Universal")
+    quantity = db.Column(db.Integer, default=0)
+    reorder_threshold = db.Column(db.Integer, default=5)
+    reorder_quantity = db.Column(db.Integer, default=10)
+    maximum_stock_level = db.Column(db.Integer, default=100)
+    unit_of_measure = db.Column(db.String(20), default="PCS")
+    unit_cost = db.Column(db.Float, default=0.0)
+    storage_bin_location = db.Column(db.String(50), default="A-01")
+    warehouse_zone = db.Column(db.String(50), default="Zone A")
+    shelf_number = db.Column(db.String(50), default="Shelf 1")
+    supplier_name = db.Column(db.String(100), default="N/A")
+    supplier_part_no = db.Column(db.String(50), default="N/A")
+    lead_time_days = db.Column(db.Integer, default=7)
+    criticality_rating = db.Column(db.String(20), default="Medium")
+    last_restock_date = db.Column(db.String(20), default="N/A")
 
     def to_dict(self):
         res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -79,6 +84,7 @@ class WorkOrder(db.Model):
     asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
     technician = db.Column(db.String(100), default="Unassigned")
     status = db.Column(db.String(50), default="Pending")
+    order_type = db.Column(db.String(50), default="Corrective")  # Corrective or Preventive
 
     asset = db.relationship('Asset', backref='work_orders')
     parts_used = db.relationship('WorkOrderPart', backref='work_order', cascade="all, delete-orphan")
@@ -91,6 +97,7 @@ class WorkOrder(db.Model):
             "asset_name": self.asset.name if self.asset else "Unknown",
             "technician": self.technician,
             "status": self.status,
+            "order_type": self.order_type,
             "parts_used": [
                 {"part_id": p.part_id, "part_name": p.part.part_name if p.part else "Unknown", "quantity_used": p.quantity_used}
                 for p in self.parts_used
@@ -107,6 +114,65 @@ class WorkOrderPart(db.Model):
 
     part = db.relationship('SparePart')
 
+
+class PreventiveSchedule(db.Model):
+    __tablename__ = 'preventive_schedules'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
+    frequency_days = db.Column(db.Integer, default=30)
+    last_generated_date = db.Column(db.String(20), default="N/A")
+    next_due_date = db.Column(db.String(20), nullable=False)
+    assigned_technician = db.Column(db.String(100), default="Unassigned")
+    is_active = db.Column(db.Boolean, default=True)
+
+    asset = db.relationship('Asset', backref='pm_schedules')
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "asset_id": self.asset_id,
+            "asset_name": self.asset.name if self.asset else "Unknown",
+            "frequency_days": self.frequency_days,
+            "last_generated_date": self.last_generated_date,
+            "next_due_date": self.next_due_date,
+            "assigned_technician": self.assigned_technician,
+            "is_active": self.is_active
+        }
+
+# ----------------------------------------------------
+# AUTOMATED SCHEDULER TASK
+# ----------------------------------------------------
+
+def check_and_generate_pm_work_orders():
+    with app.app_context():
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        schedules = db.session.scalars(
+            db.select(PreventiveSchedule).where(
+                PreventiveSchedule.is_active == True,
+                PreventiveSchedule.next_due_date <= today_str
+            )
+        ).all()
+
+        for pm in schedules:
+            # Create automated PM Work Order
+            new_wo = WorkOrder(
+                title=f"[PM Auto] {pm.title}",
+                asset_id=pm.asset_id,
+                technician=pm.assigned_technician,
+                status="In Progress",
+                order_type="Preventive"
+            )
+            db.session.add(new_wo)
+
+            # Update PM schedule dates
+            next_date = datetime.now() + timedelta(days=pm.frequency_days)
+            pm.last_generated_date = today_str
+            pm.next_due_date = next_date.strftime('%Y-%m-%d')
+
+        db.session.commit()
+
 # ----------------------------------------------------
 # ROUTES & REST API ENDPOINTS
 # ----------------------------------------------------
@@ -118,6 +184,10 @@ def dashboard():
 @app.route('/inventory')
 def inventory_page():
     return render_template('inventory.html')
+
+@app.route('/schedules')
+def schedules_page():
+    return render_template('pm_schedules.html')
 
 @app.route('/api/assets', methods=['GET', 'POST'])
 def handle_assets():
@@ -178,7 +248,8 @@ def handle_work_orders():
                 title=data['title'], 
                 asset_id=int(data['asset_id']), 
                 technician=data.get('technician', 'Unassigned'), 
-                status="In Progress"
+                status="In Progress",
+                order_type=data.get('order_type', 'Corrective')
             )
             db.session.add(order)
             db.session.commit()
@@ -235,11 +306,52 @@ def complete_work_order(order_id):
                 item.part.quantity -= item.quantity_used
 
         order.status = 'Completed'
+        
+        # Update asset last maintenance date
+        if order.asset:
+            order.asset.last_maintenance_date = datetime.now().strftime('%Y-%m-%d')
+
         db.session.commit()
         return jsonify(order.to_dict())
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({"error": "Database Error", "details": str(e)}), 500
+
+@app.route('/api/pm_schedules', methods=['GET', 'POST'])
+def handle_pm_schedules():
+    if request.method == 'POST':
+        try:
+            data = request.json or {}
+            freq = int(data.get('frequency_days', 30))
+            
+            # Calculate initial next due date
+            next_due = datetime.now() + timedelta(days=freq)
+            if 'next_due_date' in data and data['next_due_date']:
+                next_due_str = data['next_due_date']
+            else:
+                next_due_str = next_due.strftime('%Y-%m-%d')
+
+            schedule = PreventiveSchedule(
+                title=data['title'],
+                asset_id=int(data['asset_id']),
+                frequency_days=freq,
+                next_due_date=next_due_str,
+                assigned_technician=data.get('assigned_technician', 'Unassigned')
+            )
+            db.session.add(schedule)
+            db.session.commit()
+            return jsonify(schedule.to_dict()), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    schedules = db.session.scalars(db.select(PreventiveSchedule)).all()
+    return jsonify([s.to_dict() for s in schedules])
+
+@app.route('/api/pm_schedules/trigger', methods=['POST'])
+def trigger_pm_checks():
+    check_and_generate_pm_work_orders()
+    return jsonify({"message": "PM generation check executed successfully."})
 
 @app.route('/api/analytics', methods=['GET'])
 def get_analytics():
@@ -247,6 +359,7 @@ def get_analytics():
     total_orders = db.session.query(WorkOrder).count()
     completed_orders = db.session.query(WorkOrder).filter(WorkOrder.status == 'Completed').count()
     in_progress_orders = db.session.query(WorkOrder).filter(WorkOrder.status == 'In Progress').count()
+    active_pms = db.session.query(PreventiveSchedule).filter(PreventiveSchedule.is_active == True).count()
     
     all_parts = db.session.scalars(db.select(SparePart)).all()
     low_stock_count = sum(1 for p in all_parts if (p.quantity or 0) <= (p.reorder_threshold or 0))
@@ -256,10 +369,26 @@ def get_analytics():
         "total_work_orders": total_orders,
         "completed_work_orders": completed_orders,
         "in_progress_work_orders": in_progress_orders,
-        "low_stock_parts_count": low_stock_count
+        "low_stock_parts_count": low_stock_count,
+        "active_pm_schedules": active_pms
     })
+
+# ----------------------------------------------------
+# APPLICATION INITIALIZATION
+# ----------------------------------------------------
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    
+    # Run PM check once every 24 hours automatically
+    scheduler.add_job(
+        id='pm_scheduler_job', 
+        func=check_and_generate_pm_work_orders, 
+        trigger='interval', 
+        hours=24
+    )
+    scheduler.init_app(app)
+    scheduler.start()
+
+    app.run(debug=True, use_reloader=False)
