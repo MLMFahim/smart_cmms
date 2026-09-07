@@ -3,407 +3,398 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart CMMS - Responsive Dashboard</title>
+    <title>Smart CMMS - Executive Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        .clickable-item {
-            cursor: pointer;
-            transition: background-color 0.15s ease-in-out;
+        .metric-card {
+            border: none;
+            border-radius: 10px;
+            transition: transform 0.2s ease-in-out;
         }
-        .clickable-item:hover {
-            background-color: #f1f5f9;
+        .metric-card:hover {
+            transform: translateY(-3px);
+        }
+        .icon-shape {
+            width: 48px;
+            height: 48px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
         }
     </style>
 </head>
-<body>
+<body class="bg-light">
 
-<nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
-    <div class="container-fluid px-3">
-        <a class="navbar-brand fw-bold" href="#">Smart Inventory & Maintenance Planner</a>
-        <span class="badge bg-secondary">3-Column Device View</span>
-    </div>
-</nav>
-
-<div class="container-fluid">
-    <div id="alert-container" class="px-2"></div>
-
-    <div class="dashboard-grid">
-        
-        <!-- COLUMN 1: ASSET REGISTRY -->
-        <div class="card-column">
-            <div class="card custom-card">
-                <div class="custom-card-header d-flex justify-content-between align-items-center">
-                    <span>1. Asset Registry</span>
-                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addAssetModal">+ Add Asset</button>
-                </div>
-                <div class="card-body p-0 scrollable-panel">
-                    <ul id="assets-list" class="list-group list-group-flush"></ul>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="/">Smart CMMS</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav ms-auto">
+                    <a class="nav-link active" href="/">Dashboard</a>
+                    <a class="nav-link" href="/inventory">Inventory</a>
+                    <a class="nav-link" href="/schedules">PM Schedules</a>
+                    <a class="nav-link" href="/reports">Reports</a>
                 </div>
             </div>
         </div>
+    </nav>
 
-        <!-- COLUMN 2: SPARE PARTS INVENTORY -->
-        <div class="card-column">
-            <div class="card custom-card">
-                <div class="custom-card-header d-flex justify-content-between align-items-center">
-                    <span>2. Spare Parts Inventory</span>
-                    <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addPartModal">+ Add Part</button>
-                </div>
-                <div class="card-body p-0 scrollable-panel">
-                    <ul id="parts-list" class="list-group list-group-flush"></ul>
-                </div>
+    <div class="container my-4">
+        <!-- Page Header & Quick Actions -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold m-0">Operations Control Center</h2>
+                <small class="text-muted">Real-time maintenance monitoring & inventory metrics</small>
+            </div>
+            <div class="mt-2 mt-md-0">
+                <button class="btn btn-outline-secondary me-2" onclick="loadDashboardData()">🔄 Refresh</button>
+                <a href="/api/reports/export/csv" class="btn btn-outline-success me-2">📥 Export CSV</a>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWorkOrderModal">+ New Work Order</button>
             </div>
         </div>
 
-        <!-- COLUMN 3: WORK ORDERS & DISPATCH -->
-        <div class="card-column">
-            <div class="card custom-card">
-                <div class="custom-card-header bg-primary">
-                    <span>3A. Dispatch Work Order</span>
-                </div>
-                <div class="card-body">
-                    <form id="create-order-form">
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold">Task Title</label>
-                            <input type="text" id="order-title" class="form-control form-control-sm" required>
+        <!-- Metric KPI Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-primary text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-white-50 uppercase fw-bold">Assets</small>
+                            <h3 class="fw-bold m-0" id="totalAssets">0</h3>
                         </div>
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold">Select Target Asset</label>
-                            <select id="order-asset" class="form-select form-select-sm" required></select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Assigned Technician</label>
-                            <input type="text" id="order-tech" class="form-control form-control-sm" required>
-                        </div>
-                        <button type="submit" class="btn btn-sm btn-primary w-100 fw-bold">Dispatch Order</button>
-                    </form>
+                        <div class="icon-shape">🏭</div>
+                    </div>
                 </div>
             </div>
-
-            <div class="card custom-card">
-                <div class="custom-card-header bg-dark">
-                    <span>3B. Active Work Orders</span>
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-warning text-dark p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-dark-50 uppercase fw-bold">Active WOs</small>
+                            <h3 class="fw-bold m-0" id="inProgressWO">0</h3>
+                        </div>
+                        <div class="icon-shape">🛠️</div>
+                    </div>
                 </div>
-                <div class="card-body p-0 scrollable-panel">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0 small">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="work-orders-table"></tbody>
-                        </table>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-success text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-white-50 uppercase fw-bold">Completed</small>
+                            <h3 class="fw-bold m-0" id="completedWO">0</h3>
+                        </div>
+                        <div class="icon-shape">✅</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-info text-dark p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-dark-50 uppercase fw-bold">Active PMs</small>
+                            <h3 class="fw-bold m-0" id="activePMs">0</h3>
+                        </div>
+                        <div class="icon-shape">📅</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-danger text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-white-50 uppercase fw-bold">Low Stock</small>
+                            <h3 class="fw-bold m-0" id="lowStockCount">0</h3>
+                        </div>
+                        <div class="icon-shape">⚠️</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <div class="card metric-card bg-dark text-white p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-white-50 uppercase fw-bold">Total Spent</small>
+                            <h3 class="fw-bold fs-5 m-0" id="totalCost">$0.00</h3>
+                        </div>
+                        <div class="icon-shape">💵</div>
                     </div>
                 </div>
             </div>
         </div>
 
-    </div>
-</div>
-
-<!-- Modal: Add Asset Form -->
-<div class="modal fade" id="addAssetModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-fullscreen-md-down">
-    <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
-        <h5 class="modal-title">New Asset Registration</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form id="asset-form" class="row g-2">
-            <div class="col-md-4"><label class="form-label small">Asset Code *</label><input type="text" name="asset_code" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Name *</label><input type="text" name="name" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Category *</label><input type="text" name="category" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Manufacturer</label><input type="text" name="manufacturer" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Model No.</label><input type="text" name="model_number" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Serial No.</label><input type="text" name="serial_number" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Location Facility *</label><input type="text" name="location_facility" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Department</label><input type="text" name="department" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Install Date</label><input type="date" name="installation_date" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Purchase Cost</label><input type="number" step="0.01" name="purchase_cost" class="form-control form-control-sm" value="0.0"></div>
-            <div class="col-md-4"><label class="form-label small">Warranty Expiry</label><input type="date" name="warranty_expiration" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Status</label><select name="operational_status" class="form-select form-select-sm"><option>Operational</option><option>Maintenance Required</option></select></div>
-            <div class="col-md-4"><label class="form-label small">Criticality</label><select name="criticality" class="form-select form-select-sm"><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
-            <div class="col-md-4"><label class="form-label small">Power Rating</label><input type="text" name="power_rating" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Operating Voltage</label><input type="text" name="operating_voltage" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Maint. Interval (Days)</label><input type="number" name="maintenance_interval_days" class="form-control form-control-sm" value="30"></div>
-            <div class="col-md-4"><label class="form-label small">Last Maint. Date</label><input type="date" name="last_maintenance_date" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Supplier Contact</label><input type="text" name="supplier_contact" class="form-control form-control-sm"></div>
-            <div class="col-12 mt-3"><button type="submit" class="btn btn-dark w-100">Save Asset</button></div>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Add Spare Part Form -->
-<div class="modal fade" id="addPartModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-fullscreen-md-down">
-    <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
-        <h5 class="modal-title">New Spare Part Registration</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form id="part-form" class="row g-2">
-            <div class="col-md-4"><label class="form-label small">Part No. *</label><input type="text" name="part_number" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Part Name *</label><input type="text" name="part_name" class="form-control form-control-sm" required></div>
-            <div class="col-md-4"><label class="form-label small">Category</label><input type="text" name="category" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Manufacturer</label><input type="text" name="manufacturer" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Model Compatibility</label><input type="text" name="model_compatibility" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Initial Quantity *</label><input type="number" name="quantity" class="form-control form-control-sm" value="0" required></div>
-            <div class="col-md-4"><label class="form-label small">Reorder Threshold</label><input type="number" name="reorder_threshold" class="form-control form-control-sm" value="5"></div>
-            <div class="col-md-4"><label class="form-label small">Reorder Quantity</label><input type="number" name="reorder_quantity" class="form-control form-control-sm" value="10"></div>
-            <div class="col-md-4"><label class="form-label small">Unit Cost</label><input type="number" step="0.01" name="unit_cost" class="form-control form-control-sm" value="0.0"></div>
-            <div class="col-md-4"><label class="form-label small">Bin Location</label><input type="text" name="storage_bin_location" class="form-control form-control-sm" value="A-01"></div>
-            <div class="col-md-4"><label class="form-label small">Unit of Measure</label><input type="text" name="unit_of_measure" class="form-control form-control-sm" value="PCS"></div>
-            <div class="col-md-4"><label class="form-label small">Supplier Name</label><input type="text" name="supplier_name" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Supplier Part No.</label><input type="text" name="supplier_part_no" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label class="form-label small">Lead Time (Days)</label><input type="number" name="lead_time_days" class="form-control form-control-sm" value="7"></div>
-            <div class="col-md-4"><label class="form-label small">Criticality</label><select name="criticality_rating" class="form-select form-select-sm"><option>Low</option><option>Medium</option><option>High</option></select></div>
-            <div class="col-md-4"><label class="form-label small">Last Restock Date</label><input type="date" name="last_restock_date" class="form-control form-control-sm"></div>
-            <div class="col-12 mt-3"><button type="submit" class="btn btn-dark w-100">Save Spare Part</button></div>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: View Asset Details -->
-<div class="modal fade" id="viewAssetModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="assetDetailTitle">Asset Details</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="assetDetailBody"></div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: View Spare Part Details -->
-<div class="modal fade" id="viewPartModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
-        <h5 class="modal-title" id="partDetailTitle">Spare Part Details</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="partDetailBody"></div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    let globalAssets = [];
-    let globalParts = [];
-
-    async function loadData() {
-        try {
-            // Load Assets
-            const assetsRes = await fetch('/api/assets');
-            globalAssets = await assetsRes.json();
-            const assetsList = document.getElementById('assets-list');
-            const assetSelect = document.getElementById('order-asset');
-            assetsList.innerHTML = ''; assetSelect.innerHTML = '';
-
-            if (!Array.isArray(globalAssets) || globalAssets.length === 0) {
-                assetsList.innerHTML = '<li class="list-group-item p-2 text-muted text-center">No assets found</li>';
-            } else {
-                globalAssets.forEach((a, index) => {
-                    assetsList.innerHTML += `<li class="list-group-item p-2 clickable-item" onclick="showAssetDetails(${index})">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <strong class="text-truncate" style="max-width: 180px;">${a.name || 'Unnamed'}</strong> 
-                            <span class="badge bg-secondary small">${a.operational_status || 'Operational'}</span>
+        <!-- Main Dashboard Tables Grid -->
+        <div class="row g-4">
+            <!-- Active Work Orders Table -->
+            <div class="col-lg-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                        <h5 class="fw-bold m-0">Recent Maintenance Activity</h5>
+                        <span class="badge bg-primary" id="workOrderCountBadge">0 Total</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Title</th>
+                                        <th>Asset</th>
+                                        <th>Type</th>
+                                        <th>Technician</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recentWorkOrdersBody">
+                                    <tr><td colspan="7" class="text-center text-muted py-3">Loading work orders...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="text-muted small mt-1">Code: ${a.asset_code || 'N/A'} | Loc: ${a.location_facility || 'N/A'}</div>
-                    </li>`;
-                    assetSelect.innerHTML += `<option value="${a.id}">${a.name || 'Asset'} (${a.asset_code || 'N/A'})</option>`;
-                });
-            }
+                    </div>
+                </div>
+            </div>
 
-            // Load Spare Parts
-            const partsRes = await fetch('/api/parts');
-            globalParts = await partsRes.json();
-            const partsList = document.getElementById('parts-list');
-            partsList.innerHTML = '';
+            <!-- Low Stock Warnings & Quick Navigation -->
+            <div class="col-lg-4">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+                        <span>⚠️ Inventory Reorder Needed</span>
+                        <a href="/inventory" class="btn btn-sm btn-light fw-bold">Manage Inventory</a>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush" id="lowStockList">
+                            <li class="list-group-item text-muted">Checking inventory levels...</li>
+                        </ul>
+                    </div>
+                </div>
 
-            if (!Array.isArray(globalParts) || globalParts.length === 0) {
-                partsList.innerHTML = '<li class="list-group-item p-2 text-muted text-center">No spare parts found</li>';
-            } else {
-                globalParts.forEach((p, index) => {
-                    partsList.innerHTML += `<li class="list-group-item p-2 d-flex justify-content-between align-items-center clickable-item" onclick="showPartDetails(${index})">
-                        <div>
-                            <strong class="d-block text-truncate" style="max-width: 180px;">${p.part_name || 'Unnamed'}</strong>
-                            <small class="text-muted">Bin: ${p.storage_bin_location || 'N/A'}</small>
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white fw-bold">System Shortcuts</div>
+                    <div class="card-body d-grid gap-2">
+                        <a href="/schedules" class="btn btn-outline-primary text-start">📅 Manage Preventive Schedules</a>
+                        <a href="/inventory" class="btn btn-outline-secondary text-start">📦 Add New Spare Parts</a>
+                        <a href="/reports" class="btn btn-outline-dark text-start">📊 Financial & Cost Reports</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Modal: Create Work Order -->
+    <div class="modal fade" id="addWorkOrderModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Create Maintenance Work Order</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="addWorkOrderForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Title *</label>
+                            <input type="text" class="form-control" name="title" placeholder="e.g. Replace Conveyor Belt" required>
                         </div>
-                        <span class="badge ${p.low_stock ? 'badge-low-stock' : 'bg-primary'}">Qty: ${p.quantity ?? 0}</span>
-                    </li>`;
-                });
+                        <div class="mb-3">
+                            <label class="form-label">Target Asset *</label>
+                            <select class="form-select" name="asset_id" id="modalAssetSelect" required>
+                                <option value="">Select Asset...</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Order Type</label>
+                            <select class="form-select" name="order_type">
+                                <option value="Corrective">Corrective</option>
+                                <option value="Preventive">Preventive</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Assigned Technician</label>
+                            <input type="text" class="form-control" name="technician" placeholder="e.g. Alex Smith">
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Est. Labor Hours</label>
+                                <input type="number" step="0.1" class="form-control" name="labor_hours" value="1.0">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Hourly Rate ($)</label>
+                                <input type="number" step="0.1" class="form-control" name="hourly_rate" value="25.0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Create Work Order</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadDashboardData() {
+            try {
+                // Fetch Analytics
+                const analyticsRes = await fetch('/api/analytics');
+                const analytics = await analyticsRes.json();
+                
+                document.getElementById('totalAssets').innerText = analytics.total_assets;
+                document.getElementById('inProgressWO').innerText = analytics.in_progress_work_orders;
+                document.getElementById('completedWO').innerText = analytics.completed_work_orders;
+                document.getElementById('activePMs').innerText = analytics.active_pm_schedules;
+                document.getElementById('lowStockCount').innerText = analytics.low_stock_parts_count;
+                document.getElementById('workOrderCountBadge').innerText = `${analytics.total_work_orders} Total`;
+
+                // Fetch Costs
+                const costRes = await fetch('/api/reports/maintenance_costs');
+                const costData = await costRes.json();
+                document.getElementById('totalCost').innerText = `$${costData.total_maintenance_cost.toFixed(2)}`;
+
+                // Fetch Work Orders
+                loadWorkOrders();
+
+                // Fetch Low Stock
+                loadLowStockItems();
+
+                // Load Asset Dropdown
+                loadAssetsDropdown();
+
+            } catch (err) {
+                console.error('Error loading dashboard metrics:', err);
             }
+        }
 
-            // Load Work Orders
-            const ordersRes = await fetch('/api/work_orders');
-            const orders = await ordersRes.json();
-            const woTable = document.getElementById('work-orders-table');
-            woTable.innerHTML = '';
+        async function loadWorkOrders() {
+            try {
+                const res = await fetch('/api/work_orders');
+                const orders = await res.json();
+                const tbody = document.getElementById('recentWorkOrdersBody');
+                tbody.innerHTML = '';
 
-            if (Array.isArray(orders)) {
-                orders.forEach(o => {
-                    woTable.innerHTML += `<tr>
+                if (orders.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No work orders recorded.</td></tr>';
+                    return;
+                }
+
+                orders.slice().reverse().forEach(o => {
+                    const row = document.createElement('tr');
+                    const badgeClass = o.status === 'Completed' ? 'bg-success' : 'bg-warning text-dark';
+                    const typeBadge = o.order_type === 'Preventive' ? 'bg-info text-dark' : 'bg-secondary';
+                    
+                    row.innerHTML = `
                         <td>#${o.id}</td>
-                        <td class="text-truncate" style="max-width: 100px;">${o.title || 'Untitled'}</td>
-                        <td><span class="badge ${o.status==='Completed'?'bg-success':'bg-warning text-dark'}">${o.status}</span></td>
-                        <td>${o.status!=='Completed'?`<button class="btn btn-xs btn-success py-0 px-1" onclick="completeOrder(${o.id})">Done</button>`:'—'}</td>
-                    </tr>`;
+                        <td><strong>${o.title}</strong></td>
+                        <td>${o.asset_name}</td>
+                        <td><span class="badge ${typeBadge}">${o.order_type}</span></td>
+                        <td>${o.technician}</td>
+                        <td><span class="badge ${badgeClass}">${o.status}</span></td>
+                        <td>
+                            ${o.status !== 'Completed' 
+                                ? `<button class="btn btn-sm btn-outline-success" onclick="completeWorkOrder(${o.id})">Complete</button>`
+                                : `<span class="text-muted small">$${o.total_cost.toFixed(2)}</span>`}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
                 });
+            } catch (err) {
+                console.error('Error loading work orders:', err);
             }
-        } catch (err) {
-            console.error("Dashboard render error:", err);
         }
-    }
 
-    function showAssetDetails(index) {
-        const a = globalAssets[index];
-        if (!a) return;
-        
-        document.getElementById('assetDetailTitle').innerText = `${a.name} (${a.asset_code})`;
-        document.getElementById('assetDetailBody').innerHTML = `
-            <div class="row g-2 small">
-                <div class="col-md-6"><strong>Asset Code:</strong> ${a.asset_code || 'N/A'}</div>
-                <div class="col-md-6"><strong>Name:</strong> ${a.name || 'N/A'}</div>
-                <div class="col-md-6"><strong>Category:</strong> ${a.category || 'N/A'}</div>
-                <div class="col-md-6"><strong>Manufacturer:</strong> ${a.manufacturer || 'N/A'}</div>
-                <div class="col-md-6"><strong>Model Number:</strong> ${a.model_number || 'N/A'}</div>
-                <div class="col-md-6"><strong>Serial Number:</strong> ${a.serial_number || 'N/A'}</div>
-                <div class="col-md-6"><strong>Facility Location:</strong> ${a.location_facility || 'N/A'}</div>
-                <div class="col-md-6"><strong>Department:</strong> ${a.department || 'N/A'}</div>
-                <div class="col-md-6"><strong>Install Date:</strong> ${a.installation_date || 'N/A'}</div>
-                <div class="col-md-6"><strong>Purchase Cost:</strong> $${a.purchase_cost ?? 0}</div>
-                <div class="col-md-6"><strong>Warranty Expiry:</strong> ${a.warranty_expiration || 'N/A'}</div>
-                <div class="col-md-6"><strong>Status:</strong> ${a.operational_status || 'N/A'}</div>
-                <div class="col-md-6"><strong>Criticality:</strong> ${a.criticality || 'N/A'}</div>
-                <div class="col-md-6"><strong>Power Rating:</strong> ${a.power_rating || 'N/A'}</div>
-                <div class="col-md-6"><strong>Operating Voltage:</strong> ${a.operating_voltage || 'N/A'}</div>
-                <div class="col-md-6"><strong>Maint. Interval:</strong> ${a.maintenance_interval_days || 0} Days</div>
-                <div class="col-md-6"><strong>Last Maint. Date:</strong> ${a.last_maintenance_date || 'N/A'}</div>
-                <div class="col-md-6"><strong>Supplier Contact:</strong> ${a.supplier_contact || 'N/A'}</div>
-            </div>
-        `;
-        
-        new bootstrap.Modal(document.getElementById('viewAssetModal')).show();
-    }
+        async function loadLowStockItems() {
+            try {
+                const res = await fetch('/api/parts/low_stock');
+                const parts = await res.json();
+                const list = document.getElementById('lowStockList');
+                list.innerHTML = '';
 
-    function showPartDetails(index) {
-        const p = globalParts[index];
-        if (!p) return;
+                if (parts.length === 0) {
+                    list.innerHTML = '<li class="list-group-item text-success text-center">All parts fully stocked!</li>';
+                    return;
+                }
 
-        document.getElementById('partDetailTitle').innerText = `${p.part_name} (${p.part_number})`;
-        document.getElementById('partDetailBody').innerHTML = `
-            <div class="row g-2 small">
-                <div class="col-md-6"><strong>Part Number:</strong> ${p.part_number || 'N/A'}</div>
-                <div class="col-md-6"><strong>Part Name:</strong> ${p.part_name || 'N/A'}</div>
-                <div class="col-md-6"><strong>Category:</strong> ${p.category || 'N/A'}</div>
-                <div class="col-md-6"><strong>Manufacturer:</strong> ${p.manufacturer || 'N/A'}</div>
-                <div class="col-md-6"><strong>Model Compatibility:</strong> ${p.model_compatibility || 'N/A'}</div>
-                <div class="col-md-6"><strong>Quantity in Stock:</strong> ${p.quantity ?? 0} ${p.unit_of_measure || 'PCS'}</div>
-                <div class="col-md-6"><strong>Reorder Threshold:</strong> ${p.reorder_threshold ?? 0}</div>
-                <div class="col-md-6"><strong>Reorder Quantity:</strong> ${p.reorder_quantity ?? 0}</div>
-                <div class="col-md-6"><strong>Unit Cost:</strong> $${p.unit_cost ?? 0}</div>
-                <div class="col-md-6"><strong>Bin Location:</strong> ${p.storage_bin_location || 'N/A'}</div>
-                <div class="col-md-6"><strong>Supplier Name:</strong> ${p.supplier_name || 'N/A'}</div>
-                <div class="col-md-6"><strong>Supplier Part No:</strong> ${p.supplier_part_no || 'N/A'}</div>
-                <div class="col-md-6"><strong>Lead Time:</strong> ${p.lead_time_days || 0} Days</div>
-                <div class="col-md-6"><strong>Criticality Rating:</strong> ${p.criticality_rating || 'N/A'}</div>
-                <div class="col-md-6"><strong>Last Restock Date:</strong> ${p.last_restock_date || 'N/A'}</div>
-                <div class="col-md-6"><strong>Stock Alert:</strong> ${p.low_stock ? '<span class="badge bg-danger">Low Stock</span>' : '<span class="badge bg-success">Sufficient</span>'}</div>
-            </div>
-        `;
-
-        new bootstrap.Modal(document.getElementById('viewPartModal')).show();
-    }
-
-    document.getElementById('asset-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const data = Object.fromEntries(new FormData(e.target));
-        const res = await fetch('/api/assets', { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(data) 
-        });
-        
-        if (res.ok) {
-            e.target.reset();
-            bootstrap.Modal.getInstance(document.getElementById('addAssetModal')).hide();
-            await loadData();
-        } else {
-            const err = await res.json();
-            alert('Error adding asset: ' + (err.error || 'Unknown error'));
+                parts.forEach(p => {
+                    list.innerHTML += `
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${p.part_name}</strong><br>
+                                <small class="text-muted">Bin: ${p.storage_bin_location}</small>
+                            </div>
+                            <span class="badge bg-danger rounded-pill">${p.quantity} / ${p.reorder_threshold} left</span>
+                        </li>
+                    `;
+                });
+            } catch (err) {
+                console.error('Error loading low stock:', err);
+            }
         }
-    });
 
-    document.getElementById('part-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const data = Object.fromEntries(new FormData(e.target));
-        const res = await fetch('/api/parts', { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(data) 
+        async function loadAssetsDropdown() {
+            try {
+                const res = await fetch('/api/assets');
+                const assets = await res.json();
+                const select = document.getElementById('modalAssetSelect');
+                select.innerHTML = '<option value="">Select Asset...</option>';
+                assets.forEach(a => {
+                    select.innerHTML += `<option value="${a.id}">${a.name} (${a.asset_code})</option>`;
+                });
+            } catch (err) {
+                console.error('Error loading assets:', err);
+            }
+        }
+
+        async function completeWorkOrder(orderId) {
+            if (!confirm('Mark this work order as Completed and deduct associated parts?')) return;
+            try {
+                const res = await fetch(`/api/work_orders/${orderId}/complete`, { method: 'POST' });
+                if (res.ok) {
+                    loadDashboardData();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + err.error);
+                }
+            } catch (err) {
+                console.error('Error completing work order:', err);
+            }
+        }
+
+        document.getElementById('addWorkOrderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const res = await fetch('/api/work_orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('addWorkOrderModal')).hide();
+                    e.target.reset();
+                    loadDashboardData();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + err.error);
+                }
+            } catch (err) {
+                console.error('Error creating work order:', err);
+            }
         });
 
-        if (res.ok) {
-            e.target.reset();
-            bootstrap.Modal.getInstance(document.getElementById('addPartModal')).hide();
-            await loadData();
-        } else {
-            const err = await res.json();
-            alert('Error adding spare part: ' + (err.error || 'Unknown error'));
-        }
-    });
-
-    document.getElementById('create-order-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const res = await fetch('/api/work_orders', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                title: document.getElementById('order-title').value,
-                asset_id: document.getElementById('order-asset').value,
-                technician: document.getElementById('order-tech').value
-            })
-        });
-
-        if (res.ok) {
-            document.getElementById('create-order-form').reset();
-            await loadData();
-        } else {
-            alert('Failed to dispatch order');
-        }
-    });
-
-    async function completeOrder(id) {
-        const res = await fetch(`/api/work_orders/${id}/complete`, { method: 'POST' });
-        if (!res.ok) {
-            const err = await res.json();
-            alert(err.error || 'Failed to complete order');
-        }
-        await loadData();
-    }
-
-    loadData();
-</script>
+        // Initialize dashboard
+        loadDashboardData();
+    </script>
 </body>
 </html>
