@@ -89,7 +89,6 @@ class WorkOrder(db.Model):
     status = db.Column(db.String(50), default="Pending")
     order_type = db.Column(db.String(50), default="Corrective")
     
-    # Financial fields for Weeks 9 & 10 cost calculations
     labor_hours = db.Column(db.Float, default=0.0)
     hourly_rate = db.Column(db.Float, default=25.0)
     completion_date = db.Column(db.String(20), default="N/A")
@@ -389,10 +388,6 @@ def trigger_pm_checks():
     check_and_generate_pm_work_orders()
     return jsonify({"message": "Air Cargo PM generation check executed successfully."})
 
-# ----------------------------------------------------
-# WEEKS 9 & 10: REPORTS & COST TRACKING ENDPOINTS
-# ----------------------------------------------------
-
 @app.route('/api/reports/maintenance_costs', methods=['GET'])
 def get_cost_report():
     completed_orders = db.session.scalars(
@@ -463,7 +458,6 @@ def get_analytics():
     all_parts = db.session.scalars(db.select(SparePart)).all()
     low_stock_count = sum(1 for p in all_parts if (p.quantity or 0) <= (p.reorder_threshold or 0))
 
-    # Total spend calculation for dashboard metrics
     completed_orders_list = db.session.scalars(db.select(WorkOrder).where(WorkOrder.status == 'Completed')).all()
     total_spent = sum(o.calculate_total_cost() for o in completed_orders_list)
 
