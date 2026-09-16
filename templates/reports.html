@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart CMMS - Cost Reports & Exports</title>
+    <title>Smart CMMS - Financial & Maintenance Reports</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -11,7 +11,7 @@
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="/">Smart CMMS</a>
+            <a class="navbar-brand fw-bold" href="/">Smart CMMS - Air Cargo Terminal</a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="/">Dashboard</a>
                 <a class="nav-link" href="/inventory">Inventory</a>
@@ -24,47 +24,69 @@
     <div class="container my-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h2 class="fw-bold m-0">Maintenance Cost Reports</h2>
-                <small class="text-muted">Lifecycle Costs & Financial Analysis</small>
+                <h2 class="fw-bold m-0">Financial & Maintenance Reports</h2>
+                <small class="text-muted">Cost Analysis (Labor + Spare Parts) & CSV Data Export</small>
             </div>
             <div>
                 <a href="/api/reports/export/csv" class="btn btn-success fw-bold">📥 Export Work Orders CSV</a>
             </div>
         </div>
 
+        <!-- Metric Summary Cards -->
         <div class="row g-3 mb-4">
-            <div class="col-md-4">
-                <div class="card shadow-sm border-0 bg-primary text-white">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-start border-primary border-4">
                     <div class="card-body">
-                        <h6>Total Maintenance Spent</h6>
-                        <h3 class="fw-bold m-0" id="totalCost">$0.00</h3>
+                        <h6 class="text-muted mb-1">Total Maintenance Cost</h6>
+                        <h3 class="fw-bold text-primary" id="totalCostDisplay">$0.00</h3>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card shadow-sm border-0 bg-secondary text-white">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-start border-success border-4">
                     <div class="card-body">
-                        <h6>Parts Expenses</h6>
-                        <h3 class="fw-bold m-0" id="partsCost">$0.00</h3>
+                        <h6 class="text-muted mb-1">Total Labor Cost</h6>
+                        <h3 class="fw-bold text-success" id="laborCostDisplay">$0.00</h3>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card shadow-sm border-0 bg-dark text-white">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-start border-warning border-4">
                     <div class="card-body">
-                        <h6>Labor Expenses</h6>
-                        <h3 class="fw-bold m-0" id="laborCost">$0.00</h3>
+                        <h6 class="text-muted mb-1">Total Spare Parts Cost</h6>
+                        <h3 class="fw-bold text-warning" id="partsCostDisplay">$0.00</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card shadow-sm border-start border-info border-4">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-1">Completed Work Orders</h6>
+                        <h3 class="fw-bold text-info" id="completedCountDisplay">0</h3>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-white fw-bold">Cost Breakdown by Asset</div>
+        <!-- Asset Cost Breakdown Table -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h5 class="m-0 fw-bold">Maintenance Cost Breakdown by Air Cargo Asset</h5>
+            </div>
             <div class="card-body p-0">
-                <ul class="list-group list-group-flush" id="assetCostList">
-                    <li class="list-group-item text-muted">Loading cost data...</li>
-                </ul>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Air Cargo Asset Name</th>
+                                <th>Accumulated Cost ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assetCostTableBody">
+                            <tr><td colspan="2" class="text-center text-muted py-3">Loading cost breakdown...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -76,29 +98,30 @@
                 const res = await fetch('/api/reports/maintenance_costs');
                 const data = await res.json();
 
-                document.getElementById('totalCost').innerText = `$${data.total_maintenance_cost.toFixed(2)}`;
-                document.getElementById('partsCost').innerText = `$${data.total_parts_cost.toFixed(2)}`;
-                document.getElementById('laborCost').innerText = `$${data.total_labor_cost.toFixed(2)}`;
+                document.getElementById('totalCostDisplay').innerText = `$${data.total_maintenance_cost.toFixed(2)}`;
+                document.getElementById('laborCostDisplay').innerText = `$${data.total_labor_cost.toFixed(2)}`;
+                document.getElementById('partsCostDisplay').innerText = `$${data.total_parts_cost.toFixed(2)}`;
+                document.getElementById('completedCountDisplay').innerText = data.completed_orders_count;
 
-                const list = document.getElementById('assetCostList');
-                list.innerHTML = '';
+                const tbody = document.getElementById('assetCostTableBody');
+                tbody.innerHTML = '';
 
-                const entries = Object.entries(data.asset_cost_breakdown);
-                if (entries.length === 0) {
-                    list.innerHTML = '<li class="list-group-item text-muted">No completed maintenance cost data found.</li>';
+                const breakdown = data.asset_cost_breakdown;
+                if (Object.keys(breakdown).length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-3">No completed maintenance records available for cost analysis.</td></tr>';
                     return;
                 }
 
-                entries.forEach(([assetName, cost]) => {
-                    list.innerHTML += `
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><strong>${assetName}</strong></span>
-                            <span class="badge bg-primary fs-6">$${cost.toFixed(2)}</span>
-                        </li>
+                for (const [assetName, cost] of Object.entries(breakdown)) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${assetName}</strong></td>
+                        <td class="fw-bold text-success">$${cost.toFixed(2)}</td>
                     `;
-                });
+                    tbody.appendChild(row);
+                }
             } catch (err) {
-                console.error('Error loading cost report:', err);
+                console.error('Error loading cost reports:', err);
             }
         }
 

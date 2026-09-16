@@ -89,7 +89,7 @@ class WorkOrder(db.Model):
     status = db.Column(db.String(50), default="Pending")
     order_type = db.Column(db.String(50), default="Corrective")
     
-    # Financial fields added for Weeks 9 & 10
+    # Financial fields for Weeks 9 & 10 cost calculations
     labor_hours = db.Column(db.Float, default=0.0)
     hourly_rate = db.Column(db.Float, default=25.0)
     completion_date = db.Column(db.String(20), default="N/A")
@@ -145,6 +145,7 @@ class PreventiveSchedule(db.Model):
     title = db.Column(db.String(150), nullable=False)
     asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), nullable=False)
     frequency_days = db.Column(db.Integer, default=30)
+    task_scope = db.Column(db.Text, default="Standard air cargo terminal inspection routine.")
     last_generated_date = db.Column(db.String(20), default="N/A")
     next_due_date = db.Column(db.String(20), nullable=False)
     assigned_technician = db.Column(db.String(100), default="Unassigned")
@@ -159,6 +160,7 @@ class PreventiveSchedule(db.Model):
             "asset_id": self.asset_id,
             "asset_name": self.asset.name if self.asset else "Unknown",
             "frequency_days": self.frequency_days,
+            "task_scope": self.task_scope,
             "last_generated_date": self.last_generated_date,
             "next_due_date": self.next_due_date,
             "assigned_technician": self.assigned_technician,
@@ -181,7 +183,7 @@ def check_and_generate_pm_work_orders():
 
         for pm in schedules:
             new_wo = WorkOrder(
-                title=f"[PM Auto] {pm.title}",
+                title=f"[PM Air Cargo] {pm.title}",
                 asset_id=pm.asset_id,
                 technician=pm.assigned_technician,
                 status="In Progress",
@@ -368,6 +370,7 @@ def handle_pm_schedules():
                 title=data['title'],
                 asset_id=int(data['asset_id']),
                 frequency_days=freq,
+                task_scope=data.get('task_scope', 'Standard air cargo inspection routine.'),
                 next_due_date=next_due_str,
                 assigned_technician=data.get('assigned_technician', 'Unassigned')
             )
@@ -384,7 +387,11 @@ def handle_pm_schedules():
 @app.route('/api/pm_schedules/trigger', methods=['POST'])
 def trigger_pm_checks():
     check_and_generate_pm_work_orders()
-    return jsonify({"message": "PM generation check executed successfully."})
+    return jsonify({"message": "Air Cargo PM generation check executed successfully."})
+
+# ----------------------------------------------------
+# WEEKS 9 & 10: REPORTS & COST TRACKING ENDPOINTS
+# ----------------------------------------------------
 
 @app.route('/api/reports/maintenance_costs', methods=['GET'])
 def get_cost_report():
@@ -396,7 +403,6 @@ def get_cost_report():
     total_parts_cost = sum(o.calculate_parts_cost() for o in completed_orders)
     total_labor_cost = sum((o.labor_hours or 0.0) * (o.hourly_rate or 0.0) for o in completed_orders)
 
-    # Asset cost breakdown
     asset_breakdown = {}
     for o in completed_orders:
         asset_name = o.asset.name if o.asset else "Unknown Asset"
@@ -417,7 +423,6 @@ def export_work_orders_csv():
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # CSV Header
     writer.writerow([
         'Work Order ID', 'Title', 'Asset Name', 'Order Type', 
         'Status', 'Technician', 'Labor Hours', 'Hourly Rate ($)', 
@@ -444,7 +449,7 @@ def export_work_orders_csv():
     return Response(
         output.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment;filename=work_orders_report.csv"}
+        headers={"Content-Disposition": "attachment;filename=air_cargo_work_orders_report.csv"}
     )
 
 @app.route('/api/analytics', methods=['GET'])
@@ -458,13 +463,18 @@ def get_analytics():
     all_parts = db.session.scalars(db.select(SparePart)).all()
     low_stock_count = sum(1 for p in all_parts if (p.quantity or 0) <= (p.reorder_threshold or 0))
 
+    # Total spend calculation for dashboard metrics
+    completed_orders_list = db.session.scalars(db.select(WorkOrder).where(WorkOrder.status == 'Completed')).all()
+    total_spent = sum(o.calculate_total_cost() for o in completed_orders_list)
+
     return jsonify({
         "total_assets": total_assets,
         "total_work_orders": total_orders,
         "completed_work_orders": completed_orders,
         "in_progress_work_orders": in_progress_orders,
         "low_stock_parts_count": low_stock_count,
-        "active_pm_schedules": active_pms
+        "active_pm_schedules": active_pms,
+        "total_spent": round(total_spent, 2)
     })
 
 # ----------------------------------------------------
